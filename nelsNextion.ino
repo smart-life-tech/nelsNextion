@@ -343,8 +343,11 @@ void pauseTotalRunTime()
 void resumeTotalRunTime()
 {
     // totalRunTimeStart = millis() - totalRunTimeElapsed;
+    unsigned long timenow = millis() - totalRunTimePausedAt;
+    totalRunTimeElapsed = totalRunTimeElapsed + timenow;
     totalRunTimeStart = totalRunTimePausedAt;
     totalRunTimePausedAt = 0;
     totalRunTimePaused = false;
-    Serial.println("Total Run Time resumed.");
+    Serial.print("Total Run Time resumed. ");
+    Serial.println(timenow);
 }
