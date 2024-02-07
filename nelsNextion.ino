@@ -32,7 +32,9 @@ unsigned long totalRunTimeElapsed = 0;  // Total Run Time elapsed time
 unsigned long totalRunTimePausedAt = 0; // Timestamp when Total Run Time was paused
 bool totalRunTimePaused = false;        // Flag to indicate if Total Run Time is paused
 bool totalRunTimeStarted = false;       // Flag to indicate if Total Run Time has been started
-
+unsigned long timenow = 0;
+unsigned long remainingTime = 0;
+unsigned long countDown = 0;
 void setup()
 {
     pinMode(relayPin, OUTPUT);
@@ -102,7 +104,7 @@ void processNextionCommand(byte *data, byte count)
         {
             if (!motorRunning)
             {
-                resumeTotalRunTime();
+                // resumeTotalRunTime();
                 if (totalRunTime > 0)
                 {
                     // totalRunTimeStart = millis() - totalRunTimeElapsed; // Resume from remaining time
@@ -166,6 +168,7 @@ void processNextionCommand(byte *data, byte count)
     { // New slider h1 (Total Run Time)
         int sliderValue = data[3];
         totalRunTime = map(sliderValue, 0x00, 0x64, 0, 100); // Ensure it doesn't exceed 100
+        countDown = totalRunTime * 60;
         Serial.print("Total Run Time set to: ");
         Serial.print(totalRunTime); // Display the value directly
         Serial.println(" minutes");
@@ -313,9 +316,9 @@ void checkTotalRunTime()
     {
         unsigned long currentTime = millis();
         unsigned long elapsedTime = currentTime - totalRunTimeStart - totalRunTimeElapsed;
-        unsigned long remainingTime = (totalRunTime * 60 * 1000) - elapsedTime;
+        remainingTime = (totalRunTime * 60 * 1000) - elapsedTime;
 
-        if (remainingTime <= 0)
+        if (/*remainingTime <= 0 &&*/ countDown <= 0)
         {
             stopMotor();
             totalRunTime = 0;
@@ -324,8 +327,10 @@ void checkTotalRunTime()
         }
         else
         {
+            runtime();
             Serial.print("Total Run Time Remaining: ");
-            Serial.print(remainingTime / 1000); // Display in seconds
+            // Serial.print(remainingTime / 1000); // Display in seconds
+            Serial.print(countDown); // Display in seconds
             Serial.println(" seconds");
         }
     }
@@ -342,12 +347,20 @@ void pauseTotalRunTime()
 
 void resumeTotalRunTime()
 {
-    // totalRunTimeStart = millis() - totalRunTimeElapsed;
-    // unsigned long timenow = millis() - totalRunTimePausedAt;
-    // totalRunTimeElapsed = totalRunTimeElapsed + timenow;
     totalRunTimeStart = totalRunTimePausedAt;
     totalRunTimePausedAt = 0;
     totalRunTimePaused = false;
     Serial.print("Total Run Time resumed. ");
-    // Serial.println(timenow);
+}
+
+void runtime()
+{
+    if (!totalRunTimePaused && countDown > 0)
+    {
+        if (millis() - timenow > 1000)
+        {
+            timenow = millis();
+            countDown--;
+        }
+    }
 }
