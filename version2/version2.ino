@@ -11,22 +11,22 @@ bool motorRunning = false;        // Track if the motor is currently running
 bool motorDirection = true;       // true for one direction, false for reverse
 unsigned long motorStartTime = 0; // To track the timing of motor behavior
 int motorState = 0;               // Current state of the motor sequence
-int maxMotorSpeed = 255;          // Maximum motor speed
+int maxMotorSpeed = 127;          // Maximum motor speed (50% of 255)
 bool isSliderSet = false;         // Indicates if the slider has been set
 
 // Variables for ramp duration, top speed duration, and pause duration
-unsigned long minRampDuration = 5000;      // 5 seconds in milliseconds
-unsigned long maxRampDuration = 60000;     // 60 seconds in milliseconds
-unsigned long rampDuration = 5000;         // Initialize with the minimum ramp duration
+unsigned long minRampDuration = 10000;     // 10 seconds in milliseconds
+unsigned long maxRampDuration = 15000;     // 15 seconds in milliseconds
+unsigned long rampDuration = 10000;        // Initialize with the minimum ramp duration
 unsigned long decelerationDuration = 5000; // Deceleration duration for gradual stop
-unsigned long topSpeedDuration = 10000;    // Default 10 seconds in milliseconds
+unsigned long topSpeedDuration = 15000;    // Default 15 seconds in milliseconds
 unsigned long pauseDuration = 5000;        // Default 5 seconds in milliseconds for pause duration
 
 // New variable for ramp up/down duration
-unsigned long rampUpDownDuration = 5000; // Default 5 seconds in milliseconds for ramp up/down duration
+unsigned long rampUpDownDuration = 10000; // Default 10 seconds in milliseconds for ramp up/down duration
 
 // Variables for Total Run Time
-unsigned long totalRunTime = 0;
+unsigned long totalRunTime = 15;        // Default 15 minutes
 unsigned long totalRunTimeStart = 0;    // Timestamp when Total Run Time starts
 unsigned long totalRunTimeElapsed = 0;  // Total Run Time elapsed time
 unsigned long totalRunTimePausedAt = 0; // Timestamp when Total Run Time was paused
@@ -36,7 +36,7 @@ unsigned long timenow = 0;
 unsigned long remainingTime = 0;
 unsigned long countDown = 0;
 bool motorAction = false;
-bool timerIsRunning = true;
+
 void setup()
 {
     pinMode(relayPin, OUTPUT);
@@ -88,7 +88,7 @@ void processNextionCommand(byte *data, byte count)
     if (memcmp(data, "\x65\x00\x01\x01\xFF\xFF\xFF", 7) == 0)
     { // Play button
         Serial.println("Play button pressed.");
-        if (!totalRunTimeStarted && !totalRunTimePaused)
+        if (!totalRunTimeStarted && !totalRunTimePaused && !motorRunning) // Check if motor is not running
         {
             if (!isSliderSet)
             {
@@ -97,29 +97,22 @@ void processNextionCommand(byte *data, byte count)
             }
             else
             {
-                if (!motorAction && !timerIsRunning)
+                if (!motorAction)
                 {
                     startTotalRunTime(); // Start the Total Run Time if the motor is not running
                     Serial.println("Starting Total Run Time.");
+                    // Print all slider values when starting Total Run Time
+                    printSliderValues();
                 }
             }
             totalRunTimeStarted = true;
+            countDown = totalRunTime * 60; // Set countdown for total run time in seconds
         }
-        else
+        else if (!motorRunning) // Only allow play button when motor is not running
         {
-            if (!motorRunning)
+            if (totalRunTime > 0)
             {
-                // resumeTotalRunTime();
-                if (totalRunTime > 0)
-                {
-                    // totalRunTimeStart = millis() - totalRunTimeElapsed; // Resume from remaining time
-                    resumeTotalRunTime();
-                }
-                Serial.println("Resuming motor and Total Run Time.");
-            }
-            else
-            {
-                Serial.println("Resuming motor.");
+                resumeTotalRunTime();
             }
             startMotorSequence();
         }
@@ -128,6 +121,8 @@ void processNextionCommand(byte *data, byte count)
     { // b0 button
         Serial.println("b0 button pressed, motor operation now allowed.");
         isSliderSet = true;
+        // Print all slider values when b0 button is pressed
+        printSliderValues();
     }
     else if (data[0] == 0x42 && data[1] == 0x42 && data[2] == 0x71)
     { // Motor speed slider
@@ -148,7 +143,7 @@ void processNextionCommand(byte *data, byte count)
     else if (data[0] == 0x45 && data[1] == 0x45 && data[2] == 0x71)
     { // Ramp up/down duration slider h0
         int sliderValue = data[3];
-        rampUpDownDuration = map(sliderValue, 0x04, 0x3C, 4000, 60000);
+        rampUpDownDuration = map(sliderValue, 4, 60, 4000, 60000); // Corrected mapping
         rampUpDownDuration = constrain(rampUpDownDuration, 4000, 60000);
         Serial.print("Ramp up/down duration set to: ");
         Serial.println(rampUpDownDuration / 1000);
@@ -195,12 +190,22 @@ void processNextionCommand(byte *data, byte count)
         }
     }
     else if (memcmp(data, "\x65\x00\x05\x01\xFF\xFF\xFF", 7) == 0)
+    {                             // Button b3
+        stopMotorBeforeRestart(); // Stop motor and restart code
+    }
+    else if (memcmp(data, "\x65\x00\x06\x01\xFF\xFF\xFF", 7) == 0)
     { // Resume button
         if (motorRunning)
         {
             resumeTotalRunTime();
             startMotorSequence();
         }
+    }
+    else if (data[0] == 0x65 && data[1] == 0x00 && data[2] == 0x03 && data[3] == 0x00)
+    { // Menu button (formerly b2 button)
+        Serial.println("Menu button pressed.");
+        printSliderValues();
+        stopMotor(); // Example action for the Menu button
     }
 }
 
@@ -241,14 +246,14 @@ void toggleRelay()
 void manageMotorBehavior()
 {
     unsigned long currentTime = millis();
+    static unsigned long lastPrintTime = 0; // Variable to store the last time values were printed
+
     int motorSpeed;
 
     switch (motorState)
     {
     case 1: // Ramping up
         motorSpeed = map(currentTime - motorStartTime, 0, rampUpDownDuration, 0, maxMotorSpeed);
-        Serial.print("ramping up :");
-        Serial.println(motorSpeed);
         if (motorSpeed >= maxMotorSpeed)
         {
             motorSpeed = maxMotorSpeed;
@@ -258,8 +263,6 @@ void manageMotorBehavior()
         break;
     case 2: // Running at max speed
         motorSpeed = maxMotorSpeed;
-        Serial.print("Running at max speed :");
-        Serial.println(motorSpeed);
         if (currentTime - motorStartTime >= topSpeedDuration)
         {
             motorState = 3;
@@ -268,8 +271,6 @@ void manageMotorBehavior()
         break;
     case 3: // Ramping down
         motorSpeed = map(currentTime - motorStartTime, 0, rampUpDownDuration, maxMotorSpeed, 0);
-        Serial.print("ramping down :");
-        Serial.println(motorSpeed);
         if (motorSpeed <= 0)
         {
             motorSpeed = 0;
@@ -291,8 +292,6 @@ void manageMotorBehavior()
         break;
     case 6: // Decelerating for stop
         motorSpeed = map(currentTime - motorStartTime, 0, decelerationDuration, maxMotorSpeed, 0);
-        Serial.print("Decelerating for stop :");
-        Serial.println(motorSpeed);
         if (motorSpeed <= 0)
         {
             motorSpeed = 0;
@@ -301,6 +300,17 @@ void manageMotorBehavior()
             Serial.println("Motor decelerated and stopped.");
         }
         break;
+    }
+
+    // Print values once per second
+    if (currentTime - lastPrintTime >= 1000)
+    {
+        lastPrintTime = currentTime;
+
+        Serial.print("Motor Speed: ");
+        Serial.print(motorSpeed);
+        Serial.print(", State: ");
+        Serial.println(motorState);
     }
 
     if (motorDirection)
@@ -332,7 +342,7 @@ void checkTotalRunTime()
         unsigned long elapsedTime = currentTime - totalRunTimeStart - totalRunTimeElapsed;
         remainingTime = (totalRunTime * 60 * 1000) - elapsedTime;
 
-        if (/*remainingTime <= 0 &&*/ countDown <= 0)
+        if (countDown <= 0)
         {
             stopMotor();
             totalRunTime = 0;
@@ -340,11 +350,11 @@ void checkTotalRunTime()
             motorAction = false;
             Serial.println("Total Run Time expired. Motor stopped.");
         }
-        else
+        else if (currentTime - timenow >= 1000)
         {
-            runtime();
+            timenow = currentTime;
+            countDown--;
             Serial.print("Total Run Time Remaining: ");
-            // Serial.print(remainingTime / 1000); // Display in seconds
             Serial.print(countDown); // Display in seconds
             Serial.println(" seconds");
         }
@@ -358,13 +368,11 @@ void pauseTotalRunTime()
     totalRunTimePaused = true;
     motorRunning = false;
     motorAction = true; // paused
-    timerIsRunning = false;
     Serial.println("Total Run Time paused.");
 }
 
 void resumeTotalRunTime()
 {
-    timerIsRunning = true;
     motorAction = false;
     totalRunTimeStart = totalRunTimePausedAt;
     totalRunTimePausedAt = 0;
@@ -372,14 +380,74 @@ void resumeTotalRunTime()
     Serial.print("Total Run Time resumed. ");
 }
 
-void runtime()
+void printSliderValues()
 {
-    if (!totalRunTimePaused && countDown > 0)
+    Serial.println("Current Slider Values:");
+    Serial.print("Motor Speed: ");
+    Serial.print(map(maxMotorSpeed, 0, 255, 0, 100));
+    Serial.println("%");
+
+    Serial.print("Ramp Duration: ");
+    Serial.print(rampDuration / 1000);
+    Serial.println(" seconds");
+
+    Serial.print("Ramp Up/Down Duration: ");
+    Serial.print(rampUpDownDuration / 1000);
+    Serial.println(" seconds");
+
+    Serial.print("Pause Duration: ");
+    Serial.print(pauseDuration / 1000);
+    Serial.println(" seconds");
+
+    Serial.print("Top Speed Run Duration: ");
+    Serial.print(topSpeedDuration / 1000);
+    Serial.println(" seconds");
+
+    Serial.print("Total Run Time: ");
+    Serial.print(totalRunTime);
+    Serial.println(" minutes");
+}
+
+void stopMotorBeforeRestart()
+{
+    for (int i = 255; i >= 0; i--)
     {
-        if (millis() - timenow > 1000)
-        {
-            timenow = millis();
-            countDown--;
-        }
+        analogWrite(motorPinIN1, i);
+        analogWrite(motorPinIN2, i);
+        delay(20);
     }
+    digitalWrite(motorPinIN1, LOW);
+    digitalWrite(motorPinIN2, LOW);
+    stopMotor();   // Stop the motor first
+    restartCode(); // Then restart the code
+}
+
+void restartCode()
+{
+    // Reset all relevant variables to their initial state
+    motorRunning = false;
+    motorDirection = true;
+    motorStartTime = 0;
+    motorState = 0;
+    // maxMotorSpeed = 127;
+    isSliderSet = false;
+    // rampDuration = minRampDuration;
+    // rampUpDownDuration = 10000;
+    // pauseDuration = 5000;
+    // topSpeedDuration = 15000;
+    // totalRunTime = 15;
+    totalRunTimeStart = 0;
+    totalRunTimeElapsed = 0;
+    totalRunTimePausedAt = 0;
+    totalRunTimePaused = false;
+    totalRunTimeStarted = false;
+    timenow = 0;
+    remainingTime = 0;
+    countDown = 0;
+    motorAction = false;
+
+    // Redirect to page 1
+    sendNextionCommand("page 1");
+
+    Serial.println("Code restarted and redirected to page 1.");
 }

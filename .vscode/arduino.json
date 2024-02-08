@@ -1,4 +1,4 @@
 {
     "board": "arduino:avr:uno",
-    "sketch": "nelsNextion.ino"
+    "sketch": "version2\\version2.ino"
 }
