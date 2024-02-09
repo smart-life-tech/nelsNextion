@@ -259,7 +259,7 @@ void manageMotorBehavior()
             motorState = 2;
             motorStartTime = currentTime;
             Serial.println("Ramping up...");
-            sendNextionCommand("t20.txt=\"Ramping up...\"");
+            sendNextionCommand("t20.txt=\"Paused\"");
         }
         break;
     case 2: // Running at max speed
@@ -269,7 +269,7 @@ void manageMotorBehavior()
             motorState = 3;
             motorStartTime = currentTime;
             Serial.println("Max speed reached.");
-            sendNextionCommand("t20.txt=\"Max speed reached.\"");
+            sendNextionCommand("t20.txt=\"Ramping up...\"");
         }
         break;
     case 3: // Ramping down
@@ -280,7 +280,7 @@ void manageMotorBehavior()
             motorState = 4;
             motorStartTime = currentTime;
             Serial.println("Ramping down...");
-            sendNextionCommand("t20.txt=\"Ramping down...\"");
+            sendNextionCommand("t20.txt=\"Max speed reached.\"");
         }
         break;
     case 4: // Pausing at 0%
@@ -289,7 +289,7 @@ void manageMotorBehavior()
             motorState = 5;
             motorStartTime = currentTime;
             Serial.println("Pausing...");
-            sendNextionCommand("t20.txt=\"pausing...\"");
+            sendNextionCommand("t20.txt=\"Ramping down...\"");
         }
         break;
     case 5: // Reverse direction
@@ -297,7 +297,7 @@ void manageMotorBehavior()
         motorState = 1; // Repeat cycle starting with ramp up
         motorStartTime = currentTime;
         Serial.println("Direction reversed.");
-        sendNextionCommand("t20.txt=\"Direction Reversed.\"");
+        sendNextionCommand("t20.txt=\"Pausing...\"");
         break;
     case 6: // Decelerating for stop
         motorSpeed = map(currentTime - motorStartTime, 0, decelerationDuration, maxMotorSpeed, 0);
@@ -307,7 +307,7 @@ void manageMotorBehavior()
             motorRunning = false;
             motorState = 0;
             Serial.println("Paused."); // Change the message here
-            sendNextionCommand("t20.txt=\"Paused.\"");
+            sendNextionCommand("t20.txt=\"Direction reversed.\"");
         }
         break;
     }
