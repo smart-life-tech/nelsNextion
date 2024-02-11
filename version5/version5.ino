@@ -90,8 +90,8 @@ void processNextionCommand(byte *data, byte count)
     if (memcmp(data, "\x65\x00\x01\x01\xFF\xFF\xFF", 7) == 0)
     { // Play button
         Serial.println("Play button pressed.");
-        if (!totalRunTimeStarted && !totalRunTimePaused && !motorRunning) // Check if motor is not running
-        {
+        if (!totalRunTimeStarted && !totalRunTimePaused && !motorRunning)
+        { // Check if motor is not running
             if (!isSliderSet)
             {
                 Serial.println("Redirecting to page 1 for b0 button press.");
@@ -110,12 +110,18 @@ void processNextionCommand(byte *data, byte count)
             totalRunTimeStarted = true;
             countDown = totalRunTime * 60; // Set countdown for total run time in seconds
         }
-        else if (!motorRunning) // Only allow play button when motor is not running
-        {
+        else if (!motorRunning && countDown <= 0)
+        { // Additional condition when countdown is <= 0
+            Serial.println("Redirecting to page 1 as countdown reached or fell below 0.");
+            sendNextionCommand("page 1");
+        }
+        else if (!motorRunning)
+        { // Only allow play button when motor is not running
             if (totalRunTime > 0)
             {
                 resumeTotalRunTime();
             }
+
             startMotorSequence();
         }
     }
@@ -368,6 +374,9 @@ void checkTotalRunTime()
             totalRunTimePaused = false;
             motorAction = false;
             Serial.println("Total Run Time expired. Motor stopped.");
+            sendNextionCommand("page 0");
+            sendNextionCommand("t20.txt=\"""\"");
+            Serial.println("");
         }
         else if (currentTime - timenow >= 1000)
         {
@@ -378,11 +387,6 @@ void checkTotalRunTime()
             Serial.println(" seconds");
             String counting = countdownToString(countDown);
             sendNextionCommand("t21.txt=\"" + String(counting) + "\"");
-            if (countDown <= 0)
-            {
-                stopMotor();
-                restartCode();
-            }
         }
     }
 }
@@ -439,47 +443,18 @@ void stopMotorBeforeRestart()
     digitalWrite(motorPinIN1, LOW);
     digitalWrite(motorPinIN2, LOW);
     stopMotor();   // Stop the motor first
-    restartCode0(); // Then restart the code to page 0
+    restartCode(); // Then restart the code
 }
 
-void restartCode0()
-{
-    // Reset all relevant variables to their initial state
-    motorRunning = false;
-    motorDirection = true;
-    motorStartTime = 0;
-    motorState = 0;
-    maxMotorSpeed = 127;
-    isSliderSet = false;
-    rampDuration = minRampDuration;
-    rampUpDownDuration = 10000;
-    pauseDuration = 5000;
-    topSpeedDuration = 15000;
-    totalRunTime = 15;
-    totalRunTimeStart = 0;
-    totalRunTimeElapsed = 0;
-    totalRunTimePausedAt = 0;
-    totalRunTimePaused = false;
-    totalRunTimeStarted = false;
-    timenow = 0;
-    remainingTime = 0;
-    countDown = 0;
-    motorAction = false;
-
-    // Redirect to page 1
-    sendNextionCommand("page 0");
-
-    Serial.println("Code restarted and redirected to page 0.");
-}
 void restartCode()
 {
     // Reset all relevant variables to their initial state
     motorRunning = false;
     motorDirection = true;
     motorStartTime = 0;
-    motorState = 0;
+
     maxMotorSpeed = 127;
-    isSliderSet = false;
+    isSliderSet = true;
     rampDuration = minRampDuration;
     rampUpDownDuration = 10000;
     pauseDuration = 5000;
@@ -496,9 +471,8 @@ void restartCode()
     motorAction = false;
 
     // Redirect to page 1
-    sendNextionCommand("page 1");
 
-    Serial.println("Code restarted and redirected to page 1.");
+    Serial.println("Code restarted.");
 }
 
 void sendMotorStateToNextion(int state)
